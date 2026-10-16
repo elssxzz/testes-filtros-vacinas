@@ -17,7 +17,6 @@ def processar_bloco(registros, primeiro_bloco):
     dados_fa = dados[dados["sg_imunobiologico"].str.contains("VFA", case=False, na=False)]
 
     if len(dados_fa) > 0:
-        # reindex mantém sempre as mesmas colunas, na mesma ordem, em todos os blocos
         dados_fa = dados_fa.reindex(columns=colunas_saida)
         dados_fa.to_csv(
             arq_saida,
