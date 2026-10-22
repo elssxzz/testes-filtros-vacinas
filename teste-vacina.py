@@ -1,52 +1,68 @@
-import pandas as pd
+from pathlib import Path
 import ijson
+import pandas as pd
 
-arquivo = "vacinacao_mai_2025.json"
-arq_saida = "vacinas_febre_amarela_mai.csv"
-div = 30000
+pasta = Path(__file__).resolve().parent
 
-colunas_saida = [
+pasta_saida = pasta / "resultados"
+
+tamanho_bloco = 50000   
+
+colunas = [
     "tp_sexo_paciente",
-    "co_vacina_grupo_atendimento",
-    "co_estrategia_vacinacao",
-    "sg_uf_estabelecimento",
+    "co_vacina_grupo_atendimento",
+    "co_estrategia_vacinacao",
+    "sg_uf_estabelecimento",
+    "dt_vacina",
 ]
 
-def processar_bloco(registros, primeiro_bloco):
-    dados = pd.DataFrame(registros)
-    dados_fa = dados[dados["sg_imunobiologico"].str.contains("VFA", case=False, na=False)]
+if not pasta.is_dir():
+    raise SystemExit(f"Diretório não encontrado: {pasta}")
 
-    if len(dados_fa) > 0:
-        dados_fa = dados_fa.reindex(columns=colunas_saida)
-        dados_fa.to_csv(
-            arq_saida,
-            index=False,
-            mode="w" if primeiro_bloco else "a",
-            header=primeiro_bloco,
-        )
-        primeiro_bloco = False
+pasta_saida.mkdir(parents=True, exist_ok=True)
+arq_final = pasta_saida / "consolidado_febre_amarela.csv"
+arq_final.unlink(missing_ok=True)
 
-    return len(dados), len(dados_fa), primeiro_bloco
+resumo = []
 
-total_geral = 0
-casos_totais = 0
-primeiro_bloco = True
-bloco_atual = []
+def processar_bloco(registros):
+    dados = pd.DataFrame(registros)
+    dados_fa = dados[dados["sg_imunobiologico"].str.contains("VFA", case=False, na=False)]
+    dados_fa = dados_fa.reindex(columns=colunas)
 
-with open(arquivo, "rb") as f:
-    for registro in ijson.items(f, "item"):
-        bloco_atual.append(registro)
+    if len(dados_fa) > 0:
+        ja_existe = arq_final.exists()
+        dados_fa.to_csv(arq_final, index=False, mode="a", header=not ja_existe)
 
-        if len(bloco_atual) >= div:
-            n_total, n_fa, primeiro_bloco = processar_bloco(bloco_atual, primeiro_bloco)
-            total_geral += n_total
-            casos_totais += n_fa
-            bloco_atual = []
+    return len(dados), len(dados_fa)
 
-if bloco_atual:
-    n_total, n_fa, primeiro_bloco = processar_bloco(bloco_atual, primeiro_bloco)
-    total_geral += n_total
-    casos_totais += n_fa
 
-print(f"Total de doses aplicadas no programa de imunização: {total_geral:,}")
-print(f"Total de doses para Febre Amarela: {casos_totais:,}")
+for arquivo in sorted(pasta.glob("*.json")):
+    print("Processando", arquivo.name)
+    total = 0
+    febre_amarela = 0
+    bloco = []
+
+    with open(arquivo, "rb") as f:
+        for registro in ijson.items(f, "item"):
+            bloco.append(registro)
+            if len(bloco) >= tamanho_bloco:
+                t, fa = processar_bloco(bloco)
+                total += t
+                febre_amarela += fa
+                bloco = []
+
+    if bloco:
+        t, fa = processar_bloco(bloco)
+        total += t
+        febre_amarela += fa
+
+    resumo.append({"arquivo": arquivo.name, "total_doses": total, "doses_febre_amarela": febre_amarela})
+    print(f"  Total: {total:,} | Febre Amarela: {febre_amarela:,}")
+
+resumo = pd.DataFrame(resumo)
+
+print()
+print(f"Total de doses no programa: {resumo['total_doses'].sum():,}")
+print(f"Total de doses de Febre Amarela: {resumo['doses_febre_amarela'].sum():,}")
+print(f"Arquivo gerado: {arq_final}")
