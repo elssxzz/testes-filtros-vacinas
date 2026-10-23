@@ -14,6 +14,7 @@ colunas = [
     "co_estrategia_vacinacao",
     "sg_uf_estabelecimento",
     "dt_vacina",
+    "co_paciente"
 ]
 
 if not pasta.is_dir():
